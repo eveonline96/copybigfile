@@ -1,329 +1,252 @@
-/*线程池任务队列代码*/
-/*
-function:初始化任务链表队列
-parameter:
-          taskqueue qtask  队列
-*/
-void init_queue(taskqueue* qtask)
+//文件处理代码
+//计算文件大小
+unsigned int file_size(unsigned int fd)
 {
-	qtask->head=NULL;
-	qtask->tail=NULL;
+  unsigned int f_size=lseek(fd,0,SEEK_END);
+  lseek(fd,0,SEEK_SET);
+  return f_size;
 }
 
-/*
-function:进队操作
-parameter:
-          taskqueue qtask  队列
-          fileblock *fblock  指向文件分块的指针
-*/
-void push_queue(taskqueue *qtask,fileblock *fblock)
-{
-	tasknode *newtasknode=(tasknode *)malloc(1*sizeof(tasknode));
-	newtasknode->fpblock=fblock;
-	newtasknode->next=NULL;
-	if(qtask->head==NULL && qtask->tail==NULL)
-	{
-       qtask->head=newtasknode;
-       qtask->tail=newtasknode;
-	}
-	else
-	{
-		qtask->tail->next=newtasknode;
-		qtask->tail=newtasknode;
-	}
-}
-/*
-function:判断队列是否为空
-parameter:
-          taskqueue qtask  队列
-return value:
-             1:队列为空
-             0:队列非空
-*/
-int  is_empty_queue(taskqueue* qtask)
-{
-	int isempty=0;
-	if(qtask->head==NULL && qtask->tail==NULL)
-		isempty=1;
-	return isempty;
-}
-/*
-function:出队列操作
-parameter:
-          taskqueue qtask  队列
-return value:
-            NOT NULL 返回从队列中提取一个任务节点
-            NULL  从队列中提取任务节点失败
-*/
-tasknode*  pop_queue(taskqueue* qtask)
-{
-     tasknode  *returnnode=NULL;
-     if(!is_empty_queue(qtask))
-     {
-     	returnnode=qtask->head;     	
-     	qtask->head=qtask->head->next;
-     	if(qtask->head==NULL)
-     	{
-     		qtask->tail=NULL;
-     	}
-     	returnnode->next=NULL;
-     }
-     return returnnode;
+//文件分块数
+unsigned int file_blockcnt(unsigned int fd)
+{ 
+  unsigned int f_size=file_size(fd);
+  unsigned int f_blockcnt=f_size/BLOCKSIZE;
+  unsigned int f_remsize=f_size%BLOCKSIZE;  
+  if (f_remsize>0)
+  {
+    f_blockcnt+=1;
+  }
+  return f_blockcnt;
 }
 
-void free_queue_point(taskqueue* qtask)
+//非整数块时，计算出文件剩余大小
+unsigned int file_remsize(unsigned int fd)
 {
-	if(qtask!=NULL && qtask->head==NULL && qtask->tail==NULL)
-	{
-		free(qtask);
-		qtask=NULL;
-	}
+  unsigned int f_size=file_size(fd);
+  unsigned int f_remsize=f_size%BLOCKSIZE;  
+  if (f_remsize>0)
+  {
+    return f_remsize;
+  }
+  else
+  {
+    return 0;
+  }
+  
 }
 
-
-/*文件处理代码*/
-/*
-function:输出系统返回错误信息
-parameter:
-          const char* errmsg  错误信息
-*/
-void  output_sys_errmsg(const char* errmsg)
+//源文件映射地址
+unsigned char * srcfile_mapaddr(unsigned int fd)
 {
-	perror(errmsg);
+  unsigned int f_size=file_size(fd);
+  g_srcfaddr=(unsigned char *)mmap(NULL,f_size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
+  if (g_srcfaddr==NULL)
+  {
+    ERR_EXIT("srcfile map address fail");
+  }
+  return g_srcfaddr;
 }
 
-/*
-function:计算文件大小
-parameter:
-          unsigned int fd  源文件描述符
-return value: 文件大小
-*/
-unsigned int  get_file_size(unsigned int fd)
+//源文件大小已知，目标文件映射地址
+unsigned char * destfile_mapaddr(unsigned int srcfd,unsigned int destfd)
 {
-	unsigned int filesize=lseek(fd,0,SEEK_END);
-	lseek(fd,0,SEEK_SET);
-	return filesize;
-}
-/*
-function:依据文件大小计算文件分块数
-parameter:
-          unsigned int fd  源文件描述符
-return value: 文件块数
-*/
-unsigned int  get_file_block_cnt(unsigned int fd)
-{
-	unsigned int fileblockcnt=0;
-	unsigned int  filesize=get_file_size(fd);
-	unsigned int fileremaindsize=filesize%BLOCKSIZE;
-	fileblockcnt=filesize/BLOCKSIZE;
-	if(fileremaindsize>0)
-	{
-       fileblockcnt=fileblockcnt+1;
-	}
-	return fileblockcnt;
+  unsigned int f_size=file_size(srcfd);
+  lseek(destfd,f_size,SEEK_SET);
+  write(destfd, " ",1);
+  g_destfaddr=(unsigned char *)mmap(NULL,f_size,PROT_READ|PROT_WRITE,MAP_SHARED,destfd,0);
+  if (g_destfaddr==NULL)
+  {
+    ERR_EXIT("destfile map address fail");
+  }
+  return g_destfaddr;
 }
 
-/*
-function:如果文件分块不是整数块,计算出剩余的字节数
-parameter:
-          unsigned int fd  源文件描述符
-return value: 最后一块大小,文件最后一块剩余大小
-*/
-unsigned int   get_remainsize(unsigned int fd)
+//释放文件内存映射
+void file_munmap(unsigned int srcfd)
 {
-	unsigned int remainsize=0;
-	unsigned int filesize=get_file_size(fd);
-	if(filesize%BLOCKSIZE>0)
-	{
-		remainsize=filesize%BLOCKSIZE;
-	}
-	return remainsize;
+  unsigned int f_size=file_size(srcfd);
+  if (g_srcfaddr)
+  {
+    munmap(g_srcfaddr,f_size);
+  }
+  if (g_destfaddr)
+  {
+    munmap(g_destfaddr,f_size);
+  }
 }
 
-/*
-function:建立文件内存映射
-parameter:
-          unsigned int fd  源文件描述符
-return value:返回内存映射地址值
-*/
-unsigned char *  get_srcfile_map_addres(unsigned int fd)
+//计算文件分块的结构
+fileblock * file_block(unsigned int fd)
 {
-	unsigned int filesize=get_file_size(fd);
-	//unsigned char * filestartp=NULL;
-	g_srcfilestartp=(unsigned char*)mmap(NULL,filesize,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
-	if(g_srcfilestartp==NULL)
-	{
-		output_sys_errmsg("get_srcfile_map_addres mmap:");
-		exit(-1);
-	}
-	return g_srcfilestartp;
-} 
-
-/*
-function:建立目标文件内存映射
-parameter:
-          unsigned int srcfd  源文件描述符
-          unsigned int destfd 目标文件描述符
-return value:返回内存映射地址值
-*/
-unsigned char *  get_destfile_map_addres(unsigned int srcfd,unsigned int destfd)
-{
-	unsigned int filesize=get_file_size(srcfd);
-	lseek(destfd,filesize,SEEK_SET);
-	write(destfd," ",1);
-	g_destfilestartp=(unsigned char*)mmap(NULL,filesize,PROT_READ|PROT_WRITE,MAP_SHARED,destfd,0);
-	if(g_destfilestartp==NULL)
-	{
-		output_sys_errmsg("get_destfile_map_addres mmap:");
-		exit(-1);
-	}
-	return g_destfilestartp;
-}
-
-/*
-function:释放源文件内存映射区
-parameter:
-         int fd 映射对应的文件描述符
-*/
-void  set_srcfile_munmap(int fd)
-{
-	unsigned int filesize=get_file_size(fd);
-    if(g_srcfilestartp!=NULL)
-    {
-        munmap(g_srcfilestartp,filesize);
-    }
-}
-
-/*
-function:释放源文件内存映射区
-parameter:
-         int fd 映射对应的文件描述符         
-*/
-
-void  set_destfile_munmap(int fd)
-{
-	unsigned int filesize=get_file_size(fd);
-    if(g_destfilestartp!=NULL)
-    {
-        munmap(g_destfilestartp,filesize);
-    }
-}
-
-/*
-function:计算文件分块,并记录每块文件的信息
-parameter:
-          unsigned int fd  源文件描述符
-return values:指向记录文件块信息结构数组指针
-*/
-fileblock*  get_file_block(unsigned int fd)
-{
-   unsigned int fileblockcnt=get_file_block_cnt(fd);
-   unsigned int fileremaindsize=get_remainsize(fd);
-   fileblock* fileblockarray=(fileblock*)malloc(fileblockcnt*sizeof(fileblock));
-   if(fileblockarray==NULL)
+  unsigned int f_blockcnt=file_blockcnt(fd);
+  unsigned int f_remsize=file_remsize(fd);
+  fileblock * f_blockarr=(fileblock*)malloc(f_blockcnt*sizeof(fileblock));
+  if(f_blockarr==NULL)
    {
-   	   output_sys_errmsg("get_file_block malloc:");
-   	   exit(-1);
-   }
+    ERR_EXIT("file block malloc fail");
+   } 
    int i;
-   for(i=0;i<fileblockcnt-1;i++)
+   for(i=0;i<f_blockcnt-1;i++)
    {
-      fileblockarray[i].startfilepos=i*BLOCKSIZE;
-      fileblockarray[i].blocksize=BLOCKSIZE;
+    f_blockarr[i].startfpos=i*BLOCKSIZE;
+    f_blockarr[i].blocksize=BLOCKSIZE;
    }
-
-   fileblockarray[i].startfilepos=i*BLOCKSIZE;
-   fileblockarray[i].blocksize=fileremaindsize>0?fileremaindsize:BLOCKSIZE;
-   return fileblockarray;
+   f_blockarr[i].startfpos=i*BLOCKSIZE;
+   f_blockarr[i].blocksize=f_remsize>0?f_remsize:BLOCKSIZE;
+  return f_blockarr;
 }
 
-/*
-function:线程执行函数(实现分块复制)
-parameter:
-          void* arg 主线程传递块结构
-*/
-void*  pthread_copy_work(void* arg)
+//初始化队列
+void init_queue(taskqueue*qtask)
 {
-   fileblock * blockstruct=(fileblock*)arg; 
-   memcpy((void*)&g_destfilestartp[blockstruct->startfilepos],(void*)&g_srcfilestartp[blockstruct->startfilepos],blockstruct->blocksize);
-   return NULL;
-}  
-
-/*线程池的代码*/
-/*
-function:线程执行的任务
-parameter:
-*/
-void* run(void * arg)
+  qtask->head=NULL;
+  qtask->tail=NULL;
+}
+//进队操作
+void push_queue(taskqueue *qtask,fileblock*fblock)
 {
-   pthread_mutex_lock(g_pool->mutex);
-   g_pthreadcnt++;//记录成功创建的线程数
-   pthread_mutex_unlock(g_pool->mutex);
-	//不能让每个线程结束
-   while(1)
-   {
-	  pthread_mutex_lock(g_pool->mutex);
-	  //刚开无任务执行,堵塞线程
-      if(g_pool->taskcnt==0 && g_pool->isshutdown==0)
-	   {
-		   pthread_cond_wait(g_pool->cond,g_pool->mutex);
-	   }
-	   //获取任务队列中任务节点
-	   g_pool->head=pop_queue(g_taskqueuep);
-	   pthread_mutex_unlock(g_pool->mutex);
-	   if(g_pool->head!=NULL)
-	   { 
-	     pthread_copy_work((void*)g_pool->head->fpblock);
-	     // if(g_pool->head->fpblock!=NULL)
-	     // {
-      //       free(g_pool->head->fpblock);
-      //       g_pool->head->fpblock=NULL;
-	     // }
-		 free(g_pool->head);
-		 g_pool->head=NULL;
-	   g_pool->taskcnt--;	 
-	   g_hasdotaskcnt++;//记录已经完成一个任务   
-     printf("%d\n",g_hasdotaskcnt);
-		 if(g_pool->taskcnt==0 && g_hasdotaskcnt==g_pool->tasktotalcnt)
-		 {
-		 	 g_ismainwake=1;
-       if(g_fileblockfp!=NULL)
-       {
-          free(g_fileblockfp);
-          g_fileblockfp=NULL;
-       }
-		 }  
-    
-		 usleep(100);//防止总是让一个线程做
-	   }
-
-	   if(g_pool->isshutdown)
-	   {
-		   pthread_mutex_unlock(g_pool->mutex);
-		   //printf("pthread id=%u\n",pthread_self());
-		   pthread_exit(NULL);
-	   }
-   }
+  tasknode *new_tnode=(tasknode *)malloc(1*sizeof(tasknode));
+  new_tnode->fpblock=fblock;
+  new_tnode->next=NULL;
+  if (qtask->head==NULL && qtask->tail==NULL)
+  {
+    qtask->head=new_tnode;
+    qtask->tail=new_tnode;
+  }
+  else
+  {
+    qtask->tail->next=new_tnode;
+    qtask->tail=new_tnode;
+  }
 }
 
-/*
-function:初始化线程池
-parameter:
-          int initpthreadcnt  线程个数
-*/
-void init_pthread_pool(unsigned int initpthreadcnt,unsigned int tasktotalcnt)
+//创建任务队列
+void init_task_list(unsigned int fd)
 {
-   g_pool=(pthreadpool*)malloc(1*sizeof(pthreadpool));
-   while(g_pool==NULL)
-   {
-     g_pool=(pthreadpool *)malloc(1*sizeof(pthreadpool));
-   }
+  g_taskqueuep=(taskqueue*)malloc(1*sizeof(taskqueue));
+  if (g_taskqueuep==NULL)
+  {
+    ERR_EXIT("init task list fail");
+  }
+  init_queue(g_taskqueuep);
+  g_blockfp=file_block(fd);
+  int i;
+  for(i=0;i<g_pool->tasktotalcnt;i++)
+  {
+    push_queue(g_taskqueuep,&g_blockfp[i]);
+    g_pool->taskcnt++;
+    printf("taskcnt=%d\n",g_pool->taskcnt);
+    pthread_cond_signal(g_pool->cond);  //唤醒
+  }
+}
+
+
+//判断队列是否为空
+int no_empty_queue(taskqueue *qtask)
+{
+  int isempty=1;
+  if (qtask->head==NULL && qtask->tail==NULL)
+  {
+    isempty=0;
+  }
+  return isempty;
+}
+//出队列操作
+tasknode * pop_queue(taskqueue * qtask)
+{
+  tasknode * returnnode=NULL;
+  if (no_empty_queue(qtask))
+  {
+    returnnode=qtask->head;
+    qtask->head=qtask->head->next;
+    if (qtask->head==NULL)
+    {
+      qtask->tail=NULL;
+    }
+    returnnode->next=NULL;
+  }
+  return returnnode;
+}
+//释放队列
+void free_queue(taskqueue *qtask)
+{
+  if (qtask!=NULL&&qtask->head==NULL &&qtask->tail==NULL)
+  {
+    free(qtask);
+    qtask=NULL;
+  }
+}
+
+//释放文件结构
+void   free_blockfp(fileblock * blockfp)
+{
+  if(blockfp!=NULL)
+    {
+       free(blockfp);
+       blockfp=NULL;
+    }
+}
+
+//用线程实现函数
+void* copy_file(void * arg)
+{
+  fileblock * b_struct=(fileblock*)arg;
+  memcpy((void *)&g_destfaddr[b_struct->startfpos],(void *)&g_srcfaddr[b_struct->startfpos],b_struct->blocksize);
+  return NULL;
+}
+
+
+
+//执行函数
+void* Run(void* arg)
+{
+  pthread_mutex_lock(g_pool->mutex);    //刚开始无任务执行,堵塞线程
+  g_pthreadcnt++;//记录成功创建的线程数
+  pthread_mutex_unlock(g_pool->mutex);
+  while(1)
+  {
+    pthread_mutex_lock(g_pool->mutex);
+    if (g_pool->taskcnt==0 && g_pool->isshutdown==0)
+    {
+      pthread_cond_wait(g_pool->cond,g_pool->mutex);
+    }
+    g_pool->head=pop_queue(g_taskqueuep);
+    pthread_mutex_unlock(g_pool->mutex);   //修改公共资源
+    if (g_pool->head!=NULL)
+    {
+      copy_file((void*)&g_pool->head->fpblock);
+      free(g_pool->head);
+      g_pool->head=NULL;
+      g_pool->taskcnt--;
+      g_hasdotaskcnt++;   //记录已经完成一个任务
+      printf("g_pool->taskcnt=%d\n",g_pool->taskcnt);
+      if(g_pool->taskcnt==0 && g_hasdotaskcnt==g_pool->tasktotalcnt)
+        g_wake=1;
+    }
+    if(g_pool->isshutdown)  //销毁使用
+     {
+       pthread_mutex_unlock(g_pool->mutex);
+       pthread_exit(NULL);
+     }
+  }
+}
+
+//线程池初始化
+void init_pthread_pool(unsigned int tasktotalcnt)
+{
+  g_pool=(pthreadpool *)malloc(1*sizeof(pthreadpool));
+  while(g_pool==NULL)
+  {
+    g_pool=(pthreadpool *)malloc(1*sizeof(pthreadpool));
+  }
    g_pool->mutex=NULL;
    g_pool->mutex=(pthread_mutex_t*)malloc(1*sizeof(pthread_mutex_t));
    while(g_pool->mutex==NULL)
    {
       g_pool->mutex=(pthread_mutex_t*)malloc(1*sizeof(pthread_mutex_t));
    }
+
    g_pool->cond=NULL;
    g_pool->cond=(pthread_cond_t*)malloc(1*sizeof(pthread_cond_t));
    while(g_pool->cond==NULL)
@@ -333,81 +256,46 @@ void init_pthread_pool(unsigned int initpthreadcnt,unsigned int tasktotalcnt)
    pthread_mutex_init(g_pool->mutex,NULL);
    pthread_cond_init(g_pool->cond,NULL);
 
-   g_pool->pthreads=(pthread_t *)malloc(sizeof(pthread_t)*initpthreadcnt);
+   g_pool->pthreads=NULL;
+   g_pool->pthreads=(pthread_t *)malloc(sizeof(pthread_t)*PTHREADCNT);
    while(g_pool->pthreads==NULL)
    {
-      g_pool->pthreads=(pthread_t *)malloc(sizeof(pthread_t)*initpthreadcnt);
+      g_pool->pthreads=(pthread_t *)malloc(sizeof(pthread_t)*PTHREADCNT);
    }
-   //创建线程
-   int i;
-   int ret;
-   for(i=0;i<initpthreadcnt;i++)
-   {
-     ret=pthread_create(&(g_pool->pthreads[i]),NULL,(void*)run,NULL);
-	   while(ret==-1)
-	   {
-        ret=pthread_create(&(g_pool->pthreads[i]),NULL,(void*)run,NULL);
-	   }
-   }   
    g_pool->head=NULL;
    g_pool->taskcnt=0;
    g_pool->isshutdown=0;
    g_pool->tasktotalcnt=tasktotalcnt;
-   while(g_pthreadcnt!=initpthreadcnt)
+
+   int i,ret;
+   for(i=0;i<PTHREADCNT;i++)
    {
-   	   ;
+     ret=pthread_create(&(g_pool->pthreads[i]),NULL,(void*)Run,NULL);
+     while(ret!=0)
+     {
+      ret=pthread_create(&(g_pool->pthreads[i]),NULL,(void*)Run,NULL);
+     }
    }
-}
-/*
-function:创建任务队列
-parameter:
-          unsigned int fd 操作的源文件描述符值
-*/
-void init_task_list(unsigned int fd)
-{
-   g_taskqueuep=(taskqueue*)malloc(1*sizeof(taskqueue));
-   if(g_taskqueuep==NULL)
-   {
-    	output_sys_errmsg("init_task_list:malloc:");
-   	  exit(-1);
-   }
-   init_queue(g_taskqueuep);
-   g_fileblockfp=NULL;
-   g_fileblockfp=get_file_block(fd);  
-   int i=0;
-   for(i=0;i<g_pool->tasktotalcnt;i++)
-   {
-   	  push_queue(g_taskqueuep,&g_fileblockfp[i]);   	
-   	  g_pool->taskcnt++;
-	    pthread_cond_signal(g_pool->cond);
-   } 	   
+  while(g_pthreadcnt!=PTHREADCNT){}
 }
 
-/*
-function:所有任务已经执行完毕,清理释放操作
-parameter:
-          int initpthreadcnt  线程个数
-*/
-void clean_pthread_pool(int initpthreadcnt)
+//所有任务已经执行完毕,清理释放操作
+void clean_pthreadpool(int initpthreadcnt)
 {
-   if(g_pool->isshutdown)
-	   return;
    g_pool->isshutdown=1;
-
    pthread_cond_broadcast(g_pool->cond);
-
    int i=0;
    for(i=0;i<initpthreadcnt;i++)
    {
-	   pthread_join(g_pool->pthreads[i],NULL);
+     pthread_join(g_pool->pthreads[i],NULL);
    }
-
+  //线程关闭
    free(g_pool->pthreads);
    g_pool->pthreads=NULL;
    free(g_pool->mutex);
    g_pool->mutex=NULL;
    free(g_pool->cond);
    g_pool->cond=NULL;
-   free(g_pool);
+   free(g_pool);  //进程关闭
    g_pool=NULL;
 }

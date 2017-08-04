@@ -66,11 +66,11 @@ unsigned char * destfile_mapaddr(unsigned int srcfd,unsigned int destfd)
 void file_munmap(unsigned int srcfd)
 {
 	unsigned int f_size=file_size(srcfd);
-	if (g_srcfaddr!=NULL)
+	if (g_srcfaddr)
 	{
 		munmap(g_srcfaddr,f_size);
 	}
-	if (g_destfaddr!=NULL)
+	if (g_destfaddr)
 	{
 		munmap(g_destfaddr,f_size);
 	}
@@ -95,14 +95,6 @@ fileblock * file_block(unsigned int fd)
 	 f_blockarr[i].startfpos=i*BLOCKSIZE;
 	 f_blockarr[i].blocksize=f_remsize>0?f_remsize:BLOCKSIZE;
 	return f_blockarr;
-}
-
-//用线程实现函数
-void* copy_file(void * arg)
-{
-	fileblock * b_struct=(fileblock*)arg;
-	memcpy((void *)&g_destfaddr[b_struct->startfpos],(void *)&g_srcfaddr[b_struct->startfpos],b_struct->blocksize);
-	return NULL;
 }
 
 //初始化队列
@@ -144,14 +136,13 @@ void init_task_list(unsigned int fd)
 	{
 		push_queue(g_taskqueuep,&g_blockfp[i]);
 		g_pool->taskcnt++;
-		cout<<"taskcnt="<<g_pool->taskcnt<<endl;   //记录
 		pthread_cond_signal(g_pool->cond);  //唤醒
 	}
 }
 
 
 //判断队列是否为空
-int is_empty_queue(taskqueue *qtask)
+int no_empty_queue(taskqueue *qtask)
 {
 	int isempty=1;
 	if (qtask->head==NULL && qtask->tail==NULL)
@@ -164,7 +155,7 @@ int is_empty_queue(taskqueue *qtask)
 tasknode * pop_queue(taskqueue * qtask)
 {
 	tasknode * returnnode=NULL;
-	if (is_empty_queue(qtask))
+	if (no_empty_queue(qtask))
 	{
 		returnnode=qtask->head;
 		qtask->head=qtask->head->next;
@@ -186,44 +177,53 @@ void free_queue(taskqueue *qtask)
 	}
 }
 
+//释放文件结构
+void   free_blockfp(fileblock * blockfp)
+{
+	if(blockfp!=NULL)
+    {
+       free(blockfp);
+       blockfp=NULL;
+    }
+}
+
+//用线程实现函数
+void* copy_file(void * arg)
+{
+	fileblock * b_struct=(fileblock*)arg;
+	memcpy((void *)&g_destfaddr[b_struct->startfpos],(void *)&g_srcfaddr[b_struct->startfpos],b_struct->blocksize);
+	return NULL;
+}
+
+
 
 //执行函数
 void* Run(void* arg)
 {
 	while(1)
 	{
-		pthread_mutex_lock(g_pool->mutex);
-		 //刚开始无任务执行,堵塞线程
+		pthread_mutex_lock(g_pool->mutex);    //刚开始无任务执行,堵塞线程
 		g_pthreadcnt++;//记录成功创建的线程数
 		if (g_pool->taskcnt==0 && g_pool->isshutdown==0)
 		{
 			pthread_cond_wait(g_pool->cond,g_pool->mutex);
 		}
 		g_pool->head=pop_queue(g_taskqueuep);
-		pthread_mutex_unlock(g_pool->mutex);  //让别的线程继续
+		pthread_mutex_unlock(g_pool->mutex);   //修改公共资源
 		if (g_pool->head!=NULL)
 		{
 			copy_file((void*)&g_pool->head->fpblock);
 			free(g_pool->head);
 			g_pool->head=NULL;
 			g_pool->taskcnt--;
-			printf("g_pool->taskcnt=%d\n",g_pool->taskcnt);
-			//cout<<"g_pool->taskcnt"<<g_pool->taskcnt<<endl;
-			g_finish_task++;  //记录已经完成一个任务 
-			if(g_pool->taskcnt==0 && g_finish_task==g_pool->tasktotalcnt)
-			{
+			g_hasdotaskcnt++;   //记录已经完成一个任务
+			//printf("g_pool->taskcnt=%d\n",g_pool->taskcnt);
+			if(g_hasdotaskcnt==g_pool->tasktotalcnt)
 				g_wake=1;
-		        if(g_blockfp!=NULL)
-		        {
-		           free(g_blockfp);
-		           g_blockfp=NULL;
-		        }
-			}
 		}
-		  
-		usleep(1);//防止总是让一个线程做
 	}
 }
+
 //线程池初始化
 void init_pthread_pool(unsigned int tasktotalcnt)
 {
@@ -232,7 +232,7 @@ void init_pthread_pool(unsigned int tasktotalcnt)
 	{
 		g_pool=(pthreadpool *)malloc(1*sizeof(pthreadpool));
 	}
-	g_pool->mutex=NULL;
+   g_pool->mutex=NULL;
    g_pool->mutex=(pthread_mutex_t*)malloc(1*sizeof(pthread_mutex_t));
    while(g_pool->mutex==NULL)
    {
@@ -268,6 +268,25 @@ void init_pthread_pool(unsigned int tasktotalcnt)
    	 	ret=pthread_create(&(g_pool->pthreads[i]),NULL,Run,NULL);
    	 }
    }
-   while(g_pthreadcnt!=PTHREADCNT){}
 }
-//
+
+//所有任务已经执行完毕,清理释放操作
+void clean_pthreadpool(int initpthreadcnt)
+{
+   g_pool->isshutdown=1;
+   pthread_cond_broadcast(g_pool->cond);
+   int i=0;
+   for(i=0;i<initpthreadcnt;i++)
+   {
+	   pthread_join(g_pool->pthreads[i],NULL);
+   }
+  //线程关闭
+   free(g_pool->pthreads);
+   g_pool->pthreads=NULL;
+   free(g_pool->mutex);
+   g_pool->mutex=NULL;
+   free(g_pool->cond);
+   g_pool->cond=NULL;
+   free(g_pool);  //进程关闭
+   g_pool=NULL;
+}

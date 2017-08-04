@@ -465,12 +465,11 @@ function:所有任务已经执行完毕,清理释放操作
 parameter:
           int initpthreadcnt  线程个数
 */
-void clean_pthread_pool(int initpthreadcnt)
+void clean_pthreadpool(int initpthreadcnt)
 {
    if(g_pool->isshutdown)
 	   return;
    g_pool->isshutdown=1;
-
    pthread_cond_broadcast(g_pool->cond);
 
    int i=0;

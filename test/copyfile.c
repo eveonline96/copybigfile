@@ -8,29 +8,33 @@ C++禁止将void指针随意赋值给其他指针。pthread_create时c++会报�
 */
 int main(int argc, char *argv[])
 {
-	unsigned int initpthreadcnt=PTHREADCNT;
-	int srcfd=open("java.avi",O_RDWR);
-	if(srcfd==-1)
+	printf("Please input copyfile name\n");
+	char srcfname[100];
+	char ch1[100]="new_";
+	scanf("%s",&srcfname);
+	strcat(ch1,srcfname);
+	int  srcfd=open(srcfname,O_RDWR);
+	if (srcfd==-1)
 	{
-		output_sys_errmsg("main open srcfd:");
-		exit(-1);
+		ERR_EXIT("open srcfd fail");
 	}
-	int destfd=open("newjava.avi",O_CREAT|O_EXCL|O_RDWR,0777);
-  if(destfd==-1)
-  {
-    output_sys_errmsg("main open destfd:");
-    exit(-1);
-  }
-  unsigned int fblockcnt=get_file_block_cnt(srcfd);
-  get_srcfile_map_addres(srcfd);
-  get_destfile_map_addres(srcfd,destfd);
-	init_pthread_pool(initpthreadcnt,fblockcnt);
+	int destfd=open(ch1,O_CREAT|O_RDWR,0777);
+	if(destfd==-1)
+	{
+	  ERR_EXIT("open destfd fail");
+	}
+
+	unsigned int fblockcnt=file_blockcnt(srcfd);
+	srcfile_mapaddr(srcfd);
+	destfile_mapaddr(srcfd,destfd);
+	init_pthread_pool(fblockcnt);
 	init_task_list(srcfd);
-	while(g_ismainwake==0)
-		   ;	
-	set_srcfile_munmap(srcfd);
-  set_destfile_munmap(srcfd);  
-	clean_pthread_pool(initpthreadcnt);	
-  free_queue_point(g_taskqueuep);
+	while(g_wake==0){}
+		printf("begin destory\n");
+
+	file_munmap(srcfd);
+	clean_pthreadpool(fblockcnt);
+	free_queue(g_taskqueuep);
+	free_blockfp(g_blockfp);
 	return 0;
 }
