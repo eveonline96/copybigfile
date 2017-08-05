@@ -8,10 +8,10 @@ C++禁止将void指针随意赋值给其他指针。pthread_create时c++会报�
 */
 int main(int argc, char *argv[])
 {
-	printf("Please input copyfile name\n");
-	char srcfname[100];
+	//printf("Please input copyfile name\n");
+	char srcfname[100]="ape.avi";
 	char ch1[100]="new_";
-	scanf("%s",&srcfname);
+	//scanf("%s",&srcfname);
 	strcat(ch1,srcfname);
 	int  srcfd=open(srcfname,O_RDWR);
 	if (srcfd==-1)
@@ -30,11 +30,21 @@ int main(int argc, char *argv[])
 	init_pthread_pool(fblockcnt);
 	init_task_list(srcfd);
 	while(g_wake==0){}
-		printf("begin destory\n");
+		//printf("begin destory\n");
 
 	file_munmap(srcfd);
-	clean_pthreadpool(fblockcnt);
+	//printf("munmap destory\n");
+
+
+	clean_pthreadpool(PTHREADCNT);
+	//printf("pthreadpool destory\n");
+
+
 	free_queue(g_taskqueuep);
+	//printf("g_taskqueuep destory\n");
+	
 	free_blockfp(g_blockfp);
+	//printf("g_blockfp destory\n");
+
 	return 0;
 }

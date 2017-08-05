@@ -5,14 +5,14 @@
 结构体：
 文件块  fileblock
 {
-	unsigned int startfpos;
-	unsigned int blocksize;
+	unsigned int startfpos;   //起始位置
+	unsigned int blocksize;   //文件块大小
 }
 
 任务节点  tasknode
 {
-	fileblock * fpblock;
-	struct tasknode *next;
+	fileblock * fpblock;     //文件块指针
+	struct tasknode *next;   
 }
 
 任务队列   taskqueue
@@ -58,7 +58,7 @@
 计算文件分块的结构				  fileblock * file_block(unsigned int fd)
 
 全局定义变量：
-#define  PTHREADCNT 5 //计划线程个数
+#define  PTHREADCNT 5             //计划线程个数
 #define  BLOCKSIZE  (1024*1024*2) //文件每块为2m
 
 unsigned int  g_ismainwake=0;   //0:堵塞  1:唤醒
@@ -69,6 +69,15 @@ pthreadpool *g_pool=NULL;  //定义一个全局线程池指针
 taskqueue * g_taskqueuep=NULL;  //定义指向任务队列的全局指针
 fileblock * g_blockfp=NULL;   //指向文件结构全局指针
 
-
 unsigned char * g_srcfilestartp=NULL;   //源文件内存映射的全局指针
 unsigned char * g_destfilestartp=NULL;   //目标文件内存映射的全局指针
+
+
+
+time ./cf
+计算时间
+
+       单线程       系统命令     多线程   
+11.5M  0.358S                    0.255s                 
+1.36G  2min15592S    1min        49S                        
+

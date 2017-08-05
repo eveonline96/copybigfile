@@ -118,7 +118,7 @@ fileblock *file_block(unsigned int fd)
 
 int main(int argc, char const *argv[])
 {
-	printf("Please input copyfile name\n");
+	//printf("Please input copyfile name\n");
 	char srcfname[100]="ape.avi";
 	char ch1[100]="new_";
 	//scanf("%s",&srcfname);

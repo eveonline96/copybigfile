@@ -136,7 +136,7 @@ void init_task_list(unsigned int fd)
   {
     push_queue(g_taskqueuep,&g_blockfp[i]);
     g_pool->taskcnt++;
-    printf("taskcnt=%d\n",g_pool->taskcnt);
+    //printf("taskcnt=%d\n",g_pool->taskcnt);
     pthread_cond_signal(g_pool->cond);  //唤醒
   }
 }
@@ -215,12 +215,12 @@ void* Run(void* arg)
     pthread_mutex_unlock(g_pool->mutex);   //修改公共资源
     if (g_pool->head!=NULL)
     {
-      copy_file((void*)&g_pool->head->fpblock);
+      copy_file((void*)g_pool->head->fpblock);
       free(g_pool->head);
       g_pool->head=NULL;
       g_pool->taskcnt--;
       g_hasdotaskcnt++;   //记录已经完成一个任务
-      printf("g_pool->taskcnt=%d\n",g_pool->taskcnt);
+      //printf("g_pool->taskcnt=%d\n",g_pool->taskcnt);
       if(g_pool->taskcnt==0 && g_hasdotaskcnt==g_pool->tasktotalcnt)
         g_wake=1;
     }
@@ -280,15 +280,16 @@ void init_pthread_pool(unsigned int tasktotalcnt)
 }
 
 //所有任务已经执行完毕,清理释放操作
-void clean_pthreadpool(int initpthreadcnt)
+void clean_pthreadpool(int pthreadcnt)
 {
    g_pool->isshutdown=1;
    pthread_cond_broadcast(g_pool->cond);
    int i=0;
-   for(i=0;i<initpthreadcnt;i++)
+   for(i=0;i<pthreadcnt;i++)
    {
      pthread_join(g_pool->pthreads[i],NULL);
    }
+
   //线程关闭
    free(g_pool->pthreads);
    g_pool->pthreads=NULL;

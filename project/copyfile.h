@@ -10,7 +10,7 @@
 #include <string.h>
 
 #define  BLOCKSIZE  (1024*1024*2) //文件每块为2m
-#define  PTHREADCNT 5 //计划线程个数
+#define  PTHREADCNT 10             //计划线程个数
 #define ERR_EXIT(m) \
 	do \
 	{ \
