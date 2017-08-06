@@ -1,5 +1,9 @@
 //文件处理代码
-//计算文件大小
+/*
+function:计算文件大小
+parameter: unsigned int fd  源文件描述符
+return value: 文件大小
+*/
 unsigned int file_size(unsigned int fd)
 {
   unsigned int f_size=lseek(fd,0,SEEK_END);
@@ -7,7 +11,11 @@ unsigned int file_size(unsigned int fd)
   return f_size;
 }
 
-//文件分块数
+/*
+function:文件分块数
+parameter: unsigned int fd  源文件描述符
+return value: 文件块数
+*/
 unsigned int file_blockcnt(unsigned int fd)
 { 
   unsigned int f_size=file_size(fd);
@@ -20,7 +28,11 @@ unsigned int file_blockcnt(unsigned int fd)
   return f_blockcnt;
 }
 
-//非整数块时，计算出文件剩余大小
+/*
+function:非整数块时，计算出文件剩余大小
+parameter:unsigned int fd  源文件描述符
+return value: 最后一块大小,文件最后一块剩余大小
+*/
 unsigned int file_remsize(unsigned int fd)
 {
   unsigned int f_size=file_size(fd);
@@ -36,7 +48,11 @@ unsigned int file_remsize(unsigned int fd)
   
 }
 
-//源文件映射地址
+/*
+function:源文件映射地址
+parameter: unsigned int fd  源文件描述符
+return value:返回内存映射地址值
+*/
 unsigned char * srcfile_mapaddr(unsigned int fd)
 {
   unsigned int f_size=file_size(fd);
@@ -48,7 +64,13 @@ unsigned char * srcfile_mapaddr(unsigned int fd)
   return g_srcfaddr;
 }
 
-//源文件大小已知，目标文件映射地址
+/*
+function:源文件大小已知，目标文件映射地址
+parameter:
+          unsigned int srcfd  源文件描述符
+          unsigned int destfd 目标文件描述符
+return value:返回内存映射地址值
+*/
 unsigned char * destfile_mapaddr(unsigned int srcfd,unsigned int destfd)
 {
   unsigned int f_size=file_size(srcfd);
@@ -62,7 +84,10 @@ unsigned char * destfile_mapaddr(unsigned int srcfd,unsigned int destfd)
   return g_destfaddr;
 }
 
-//释放文件内存映射
+/*
+function:释放文件内存映射区
+parameter: int fd 映射对应的文件描述符
+*/
 void file_munmap(unsigned int srcfd)
 {
   unsigned int f_size=file_size(srcfd);
@@ -76,7 +101,12 @@ void file_munmap(unsigned int srcfd)
   }
 }
 
-//计算文件分块的结构
+/*
+function:计算文件分块,并记录每块文件的信息
+parameter:
+          unsigned int fd  源文件描述符
+return values:指向记录文件块信息结构数组指针
+*/
 fileblock * file_block(unsigned int fd)
 {
   unsigned int f_blockcnt=file_blockcnt(fd);
